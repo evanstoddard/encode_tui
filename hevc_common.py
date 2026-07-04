@@ -13,7 +13,17 @@ from pathlib import Path
 from typing import Callable, Optional
 
 CRF = 20
-PRESET = "slow"
+PRESET = "medium"
+PRESETS = ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]
+
+# Hardware encode via macOS VideoToolbox (hevc_videotoolbox). No software
+# preset applies here - VideoToolbox has no "slow/medium/fast" knob, just a
+# quality target. NOTE: untested on real hardware (this was developed on
+# Linux) - -q:v constant-quality mode requires a reasonably recent
+# ffmpeg/macOS; if it errors, the fallback is bitrate-based (-b:v) control.
+HW_ENCODER = "hevc_videotoolbox"
+HW_QUALITY = 65  # 1-100, higher = better (opposite direction from CRF)
+
 DURATION_TOLERANCE = 2.0  # allowed seconds of drift between source/output duration
 
 
@@ -142,6 +152,10 @@ async def encode_async(
     input_path: Path,
     output_path: Path,
     on_progress: Optional[ProgressCallback] = None,
+    preset: str = PRESET,
+    crf: int = CRF,
+    hardware: bool = False,
+    hw_quality: int = HW_QUALITY,
 ) -> EncodeResult:
     """Run ffmpeg re-encoding input_path -> output_path as HEVC 10-bit.
 
@@ -149,15 +163,25 @@ async def encode_async(
     or per-line stats are printed by ffmpeg itself; progress is reported
     exclusively through on_progress via ffmpeg's machine-readable -progress
     stream, so nothing is ever waiting on stdin.
+
+    hardware=True switches to macOS VideoToolbox hardware encoding
+    (hevc_videotoolbox) instead of software libx265 - preset/crf are ignored
+    in that case, hw_quality is used instead.
     """
+    if hardware:
+        video_opts = ["-c:v", HW_ENCODER, "-profile:v", "main10", "-pix_fmt", "p010le",
+                      "-q:v", str(hw_quality)]
+    else:
+        video_opts = ["-c:v", "libx265", "-pix_fmt", "yuv420p10le",
+                      "-preset", preset, "-crf", str(crf)]
+
     cmd = [
         "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
         "-i", str(input_path),
         "-map", "0",
         "-map_metadata", "0",
         "-map_chapters", "0",
-        "-c:v", "libx265", "-pix_fmt", "yuv420p10le",
-        "-preset", PRESET, "-crf", str(CRF),
+        *video_opts,
         "-c:a", "copy",
         "-c:s", "copy",
         "-max_muxing_queue_size", "9999",

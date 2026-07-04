@@ -23,9 +23,9 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import DirectoryTree, Footer, Header, Label, ProgressBar, RichLog
+from textual.widgets import DirectoryTree, Footer, Header, Input, Label, ProgressBar, RichLog, Select, Switch
 from textual.widgets.tree import TreeNode
 from textual.widgets._directory_tree import DirEntry
 
@@ -90,6 +90,9 @@ class PickScreen(Screen):
         super().__init__()
         self.start_path = start_path
 
+    def on_mount(self) -> None:
+        self.query_one(MarkableDirectoryTree).focus()
+
     def compose(self) -> ComposeResult:
         yield Header()
         yield Label(
@@ -97,15 +100,65 @@ class PickScreen(Screen):
             "(all .mkv files under it, recursively). [b]S[/b] starts encoding.",
             id="help",
         )
+        with Horizontal(id="settings"):
+            yield Label("Hardware (VideoToolbox, macOS):")
+            yield Switch(value=False, id="hw_switch")
+            yield Label("Preset:")
+            yield Select(
+                [(p, p) for p in hc.PRESETS],
+                value=hc.PRESET,
+                allow_blank=False,
+                id="preset_select",
+            )
+            yield Label("CRF:", id="quality_label")
+            yield Input(
+                value=str(hc.CRF),
+                restrict=r"[0-9]*",
+                max_length=3,
+                id="quality_input",
+            )
         yield MarkableDirectoryTree(self.start_path, id="tree")
         yield Footer()
+
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        hardware = event.value
+        preset_select = self.query_one("#preset_select", Select)
+        quality_label = self.query_one("#quality_label", Label)
+        quality_input = self.query_one("#quality_input", Input)
+
+        # Preset is meaningless for hardware encode - there's no
+        # slow/medium/fast knob for VideoToolbox, just a quality target.
+        preset_select.disabled = hardware
+
+        if hardware:
+            quality_label.update("Quality (1-100, higher=better):")
+            if quality_input.value.strip() in ("", str(hc.CRF)):
+                quality_input.value = str(hc.HW_QUALITY)
+        else:
+            quality_label.update("CRF (lower=better):")
+            if quality_input.value.strip() in ("", str(hc.HW_QUALITY)):
+                quality_input.value = str(hc.CRF)
 
     def action_start(self) -> None:
         tree = self.query_one(MarkableDirectoryTree)
         if not tree.marked_paths:
             self.notify("No directories marked. Press space to mark one first.", severity="warning")
             return
-        self.app.push_screen(EncodeScreen(sorted(tree.marked_paths)))
+
+        hardware = self.query_one("#hw_switch", Switch).value
+        preset = self.query_one("#preset_select", Select).value
+        quality_text = self.query_one("#quality_input", Input).value.strip()
+        if hardware:
+            crf = hc.CRF
+            hw_quality = int(quality_text) if quality_text else hc.HW_QUALITY
+        else:
+            crf = int(quality_text) if quality_text else hc.CRF
+            hw_quality = hc.HW_QUALITY
+
+        self.app.push_screen(EncodeScreen(
+            sorted(tree.marked_paths), preset=preset, crf=crf,
+            hardware=hardware, hw_quality=hw_quality,
+        ))
 
     def action_quit(self) -> None:
         self.app.exit()
@@ -118,9 +171,20 @@ class EncodeScreen(Screen):
 
     SCAN_CONCURRENCY = 8
 
-    def __init__(self, directories: list[Path]) -> None:
+    def __init__(
+        self,
+        directories: list[Path],
+        preset: str = hc.PRESET,
+        crf: int = hc.CRF,
+        hardware: bool = False,
+        hw_quality: int = hc.HW_QUALITY,
+    ) -> None:
         super().__init__()
         self.directories = directories
+        self.preset = preset
+        self.crf = crf
+        self.hardware = hardware
+        self.hw_quality = hw_quality
         self.finished = False
         self.summary: BatchSummary | None = None
 
@@ -205,6 +269,11 @@ class EncodeScreen(Screen):
         file_label = self.query_one("#file_label", Label)
         file_bar = self.query_one("#file_bar", ProgressBar)
 
+        if self.hardware:
+            log.write(f"Encoding with hardware=VideoToolbox, quality={self.hw_quality}")
+        else:
+            log.write(f"Encoding with preset={self.preset}, crf={self.crf}")
+
         # Clean up stale temp files from any previous interrupted run.
         for directory in self.directories:
             for stale in directory.rglob(".*.tmp.mkv"):
@@ -280,7 +349,11 @@ class EncodeScreen(Screen):
                 overall_bar.update(progress=min(_base + t, total_duration))
 
             try:
-                result = await hc.encode_async(path, tmp_output, on_progress)
+                result = await hc.encode_async(
+                    path, tmp_output, on_progress,
+                    preset=self.preset, crf=self.crf,
+                    hardware=self.hardware, hw_quality=self.hw_quality,
+                )
             except asyncio.CancelledError:
                 tmp_output.unlink(missing_ok=True)
                 raise
@@ -333,6 +406,11 @@ class EncodeScreen(Screen):
 class HevcEncodeApp(App):
     CSS = """
     #help { padding: 0 1; }
+    #settings { height: auto; padding: 0 1; align: left middle; }
+    #settings Label { padding: 0 1 0 0; }
+    #hw_switch { margin-right: 2; }
+    #preset_select { width: 16; }
+    #quality_input { width: 6; margin-right: 2; }
     #tree { height: 1fr; }
     #overall_label, #file_label { padding: 1 1 0 1; }
     #overall_bar, #file_bar { padding: 0 1; }
