@@ -13,17 +13,21 @@ my own itch.
   right in the TUI before starting (defaults: `medium` / CRF 20). Audio,
   subtitles, chapters, and metadata are copied untouched - only video is
   re-encoded.
-- (Hardware VAAPI encode was tried but isn't an option on this box's iGPU -
-  `vainfo` shows HEVC as decode-only, encode-capable profiles are H.264/JPEG
-  only.)
-- Optional hardware encode via macOS VideoToolbox (`hevc_videotoolbox`),
-  selectable from the Encoder dropdown in the options panel - for running
-  this on a Mac instead of the Linux media server. When selected, preset is
-  ignored (VideoToolbox has no such knob) and the numeric field becomes a
-  1-100 quality value (higher = better, opposite direction from CRF) instead
-  of CRF. Untested on real hardware (built on Linux) - if `-q:v`
-  constant-quality mode isn't supported by your ffmpeg/macOS version, it'll
-  fail loudly and need switching to bitrate-based control instead.
+- Encoder dropdown in the options panel also offers two hardware backends
+  (preset is ignored for both - no such knob on hardware encoders):
+  - **VAAPI** (Intel/Linux) - uses the CRF field (same lower=better scale as
+    software). Whether this actually works depends entirely on the specific
+    iGPU/driver: confirmed working on a 12th-gen Alder Lake (Iris Xe)
+    laptop, confirmed **not** available (decode-only) on an older Coffee
+    Lake (Gen9.5) box, per `vainfo`. Check with `vainfo` if unsure before
+    relying on it.
+  - **VideoToolbox** (macOS) - the numeric field becomes a 1-100 quality
+    value instead (higher = better). Untested on real hardware (this tool
+    was built on Linux) - if `-q:v` constant-quality mode isn't supported by
+    your ffmpeg/macOS version, it'll fail loudly and need switching to
+    bitrate-based control instead.
+  - Both hardware paths trade some compression efficiency/quality-per-bit
+    for a large speed win over software `libx265`.
 - Verifies the output's duration matches the source (within a couple
   seconds) before replacing the original. If verification fails, the
   original is left alone and the encoded file is kept around (as

@@ -24,13 +24,22 @@ PRESETS = ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "sl
 HW_ENCODER = "hevc_videotoolbox"
 HW_QUALITY = 65  # 1-100, higher = better (opposite direction from CRF)
 
+# Hardware encode via Intel VAAPI (hevc_vaapi). Its -global_quality knob
+# behaves like CRF (lower = better, same rough numeric range), so it reuses
+# the crf field/value rather than hw_quality. No software preset applies
+# here either. NOTE: whether this actually works depends entirely on the
+# specific iGPU/driver - confirmed working on a 12th-gen (Alder Lake) Iris
+# Xe laptop, but confirmed NOT available at all (decode-only) on an older
+# Coffee Lake (Gen9.5) box. Check with `vainfo` if unsure.
+VAAPI_DEVICE = "/dev/dri/renderD128"
+
 # (label, value) pairs for the TUI's encoder dropdown. "software" uses
-# preset+crf; anything else is a hardware backend using hw_quality instead.
-# Intel VAAPI was evaluated and ruled out on the Linux media server itself
-# (see README) - only VideoToolbox is offered for now.
+# preset+crf; "vaapi" uses crf (same scale/direction); "videotoolbox" uses
+# hw_quality (opposite direction, 1-100).
 ENCODERS = [
     ("Software (libx265)", "software"),
     ("Hardware - VideoToolbox (macOS)", "videotoolbox"),
+    ("Hardware - VAAPI (Intel/Linux)", "vaapi"),
 ]
 
 DURATION_TOLERANCE = 2.0  # allowed seconds of drift between source/output duration
@@ -163,7 +172,7 @@ async def encode_async(
     on_progress: Optional[ProgressCallback] = None,
     preset: str = PRESET,
     crf: int = CRF,
-    hardware: bool = False,
+    encoder: str = "software",
     hw_quality: int = HW_QUALITY,
 ) -> EncodeResult:
     """Run ffmpeg re-encoding input_path -> output_path as HEVC 10-bit.
@@ -173,23 +182,35 @@ async def encode_async(
     exclusively through on_progress via ffmpeg's machine-readable -progress
     stream, so nothing is ever waiting on stdin.
 
-    hardware=True switches to macOS VideoToolbox hardware encoding
-    (hevc_videotoolbox) instead of software libx265 - preset/crf are ignored
-    in that case, hw_quality is used instead.
+    encoder selects the backend:
+      "software"     - libx265, uses preset/crf.
+      "videotoolbox" - macOS hardware encode, uses hw_quality (1-100,
+                       higher=better); preset/crf ignored.
+      "vaapi"        - Intel/Linux hardware encode, uses crf (same
+                       lower=better scale as software); preset ignored.
     """
-    if hardware:
+    pre_input_opts: list[str] = []
+    filter_opts: list[str] = []
+
+    if encoder == "videotoolbox":
         video_opts = ["-c:v", HW_ENCODER, "-profile:v", "main10", "-pix_fmt", "p010le",
                       "-q:v", str(hw_quality)]
+    elif encoder == "vaapi":
+        pre_input_opts = ["-vaapi_device", VAAPI_DEVICE]
+        filter_opts = ["-vf", "format=p010le,hwupload"]
+        video_opts = ["-c:v", "hevc_vaapi", "-profile:v", "main10", "-global_quality", str(crf)]
     else:
         video_opts = ["-c:v", "libx265", "-pix_fmt", "yuv420p10le",
                       "-preset", preset, "-crf", str(crf)]
 
     cmd = [
         "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+        *pre_input_opts,
         "-i", str(input_path),
         "-map", "0",
         "-map_metadata", "0",
         "-map_chapters", "0",
+        *filter_opts,
         *video_opts,
         "-c:a", "copy",
         "-c:s", "copy",

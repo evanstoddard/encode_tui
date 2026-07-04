@@ -130,20 +130,21 @@ class PickScreen(Screen):
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id != "encoder_select":
             return
-        hardware = event.value != "software"
+        encoder = event.value
         preset_select = self.query_one("#preset_select", Select)
         quality_label = self.query_one("#quality_label", Label)
         quality_input = self.query_one("#quality_input", Input)
 
-        # Preset is meaningless for hardware encode - there's no
-        # slow/medium/fast knob for VideoToolbox, just a quality target.
-        preset_select.disabled = hardware
+        # Preset is meaningless for any hardware encoder - there's no
+        # slow/medium/fast knob, just a quality target.
+        preset_select.disabled = encoder != "software"
 
-        if hardware:
+        if encoder == "videotoolbox":
             quality_label.update("Quality (1-100, higher=better)")
             if quality_input.value.strip() in ("", str(hc.CRF)):
                 quality_input.value = str(hc.HW_QUALITY)
         else:
+            # software and vaapi both use a CRF-like (lower=better) scale.
             quality_label.update("CRF (lower=better)")
             if quality_input.value.strip() in ("", str(hc.HW_QUALITY)):
                 quality_input.value = str(hc.CRF)
@@ -154,10 +155,10 @@ class PickScreen(Screen):
             self.notify("No directories marked. Press space to mark one first.", severity="warning")
             return
 
-        hardware = self.query_one("#encoder_select", Select).value != "software"
+        encoder = self.query_one("#encoder_select", Select).value
         preset = self.query_one("#preset_select", Select).value
         quality_text = self.query_one("#quality_input", Input).value.strip()
-        if hardware:
+        if encoder == "videotoolbox":
             crf = hc.CRF
             hw_quality = int(quality_text) if quality_text else hc.HW_QUALITY
         else:
@@ -166,7 +167,7 @@ class PickScreen(Screen):
 
         self.app.push_screen(EncodeScreen(
             sorted(tree.marked_paths), preset=preset, crf=crf,
-            hardware=hardware, hw_quality=hw_quality,
+            encoder=encoder, hw_quality=hw_quality,
         ))
 
     def action_quit(self) -> None:
@@ -185,14 +186,14 @@ class EncodeScreen(Screen):
         directories: list[Path],
         preset: str = hc.PRESET,
         crf: int = hc.CRF,
-        hardware: bool = False,
+        encoder: str = "software",
         hw_quality: int = hc.HW_QUALITY,
     ) -> None:
         super().__init__()
         self.directories = directories
         self.preset = preset
         self.crf = crf
-        self.hardware = hardware
+        self.encoder = encoder
         self.hw_quality = hw_quality
         self.finished = False
         self.summary: BatchSummary | None = None
@@ -278,8 +279,10 @@ class EncodeScreen(Screen):
         file_label = self.query_one("#file_label", Label)
         file_bar = self.query_one("#file_bar", ProgressBar)
 
-        if self.hardware:
+        if self.encoder == "videotoolbox":
             log.write(f"Encoding with hardware=VideoToolbox, quality={self.hw_quality}")
+        elif self.encoder == "vaapi":
+            log.write(f"Encoding with hardware=VAAPI, crf={self.crf}")
         else:
             log.write(f"Encoding with preset={self.preset}, crf={self.crf}")
 
@@ -361,7 +364,7 @@ class EncodeScreen(Screen):
                 result = await hc.encode_async(
                     path, tmp_output, on_progress,
                     preset=self.preset, crf=self.crf,
-                    hardware=self.hardware, hw_quality=self.hw_quality,
+                    encoder=self.encoder, hw_quality=self.hw_quality,
                 )
             except asyncio.CancelledError:
                 tmp_output.unlink(missing_ok=True)
