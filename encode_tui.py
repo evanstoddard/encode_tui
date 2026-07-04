@@ -100,24 +100,26 @@ class PickScreen(Screen):
             "(all .mkv files under it, recursively). [b]S[/b] starts encoding.",
             id="help",
         )
-        with Horizontal(id="settings"):
-            yield Label("Hardware (VideoToolbox, macOS):")
-            yield Switch(value=False, id="hw_switch")
-            yield Label("Preset:")
-            yield Select(
-                [(p, p) for p in hc.PRESETS],
-                value=hc.PRESET,
-                allow_blank=False,
-                id="preset_select",
-            )
-            yield Label("CRF:", id="quality_label")
-            yield Input(
-                value=str(hc.CRF),
-                restrict=r"[0-9]*",
-                max_length=3,
-                id="quality_input",
-            )
-        yield MarkableDirectoryTree(self.start_path, id="tree")
+        with Horizontal(id="body"):
+            with Vertical(id="settings"):
+                yield Label("Options", id="settings_title")
+                yield Label("Hardware (VideoToolbox, macOS)")
+                yield Switch(value=False, id="hw_switch")
+                yield Label("Preset")
+                yield Select(
+                    [(p, p) for p in hc.PRESETS],
+                    value=hc.PRESET,
+                    allow_blank=False,
+                    id="preset_select",
+                )
+                yield Label("CRF", id="quality_label")
+                yield Input(
+                    value=str(hc.CRF),
+                    restrict=r"[0-9]*",
+                    max_length=3,
+                    id="quality_input",
+                )
+            yield MarkableDirectoryTree(self.start_path, id="tree")
         yield Footer()
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
@@ -131,11 +133,11 @@ class PickScreen(Screen):
         preset_select.disabled = hardware
 
         if hardware:
-            quality_label.update("Quality (1-100, higher=better):")
+            quality_label.update("Quality (1-100, higher=better)")
             if quality_input.value.strip() in ("", str(hc.CRF)):
                 quality_input.value = str(hc.HW_QUALITY)
         else:
-            quality_label.update("CRF (lower=better):")
+            quality_label.update("CRF (lower=better)")
             if quality_input.value.strip() in ("", str(hc.HW_QUALITY)):
                 quality_input.value = str(hc.CRF)
 
@@ -406,12 +408,12 @@ class EncodeScreen(Screen):
 class HevcEncodeApp(App):
     CSS = """
     #help { padding: 0 1; }
-    #settings { height: auto; padding: 0 1; align: left middle; }
-    #settings Label { padding: 0 1 0 0; }
-    #hw_switch { margin-right: 2; }
-    #preset_select { width: 16; }
-    #quality_input { width: 6; margin-right: 2; }
-    #tree { height: 1fr; }
+    #body { height: 1fr; }
+    #settings { width: 28; height: 1fr; border: solid $accent; padding: 1; }
+    #settings_title { text-style: bold; padding-bottom: 1; }
+    #settings Label { padding-top: 1; }
+    #settings Select, #settings Input, #settings Switch { width: 100%; }
+    #tree { width: 1fr; height: 1fr; }
     #overall_label, #file_label { padding: 1 1 0 1; }
     #overall_bar, #file_bar { padding: 0 1; }
     #log { height: 1fr; border: solid $accent; margin: 1; }
