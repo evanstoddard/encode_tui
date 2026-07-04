@@ -17,13 +17,13 @@ my own itch.
   `vainfo` shows HEVC as decode-only, encode-capable profiles are H.264/JPEG
   only.)
 - Optional hardware encode via macOS VideoToolbox (`hevc_videotoolbox`),
-  toggled with a switch in the TUI - for running this on a Mac instead of
-  the Linux media server. When on, preset is ignored (VideoToolbox has no
-  such knob) and the numeric field becomes a 1-100 quality value (higher =
-  better, opposite direction from CRF) instead of CRF. Untested on real
-  hardware (built on Linux) - if `-q:v` constant-quality mode isn't
-  supported by your ffmpeg/macOS version, it'll fail loudly and need
-  switching to bitrate-based control instead.
+  selectable from the Encoder dropdown in the options panel - for running
+  this on a Mac instead of the Linux media server. When selected, preset is
+  ignored (VideoToolbox has no such knob) and the numeric field becomes a
+  1-100 quality value (higher = better, opposite direction from CRF) instead
+  of CRF. Untested on real hardware (built on Linux) - if `-q:v`
+  constant-quality mode isn't supported by your ffmpeg/macOS version, it'll
+  fail loudly and need switching to bitrate-based control instead.
 - Verifies the output's duration matches the source (within a couple
   seconds) before replacing the original. If verification fails, the
   original is left alone and the encoded file is kept around (as

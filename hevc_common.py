@@ -24,6 +24,15 @@ PRESETS = ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "sl
 HW_ENCODER = "hevc_videotoolbox"
 HW_QUALITY = 65  # 1-100, higher = better (opposite direction from CRF)
 
+# (label, value) pairs for the TUI's encoder dropdown. "software" uses
+# preset+crf; anything else is a hardware backend using hw_quality instead.
+# Intel VAAPI was evaluated and ruled out on the Linux media server itself
+# (see README) - only VideoToolbox is offered for now.
+ENCODERS = [
+    ("Software (libx265)", "software"),
+    ("Hardware - VideoToolbox (macOS)", "videotoolbox"),
+]
+
 DURATION_TOLERANCE = 2.0  # allowed seconds of drift between source/output duration
 
 

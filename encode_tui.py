@@ -25,7 +25,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import DirectoryTree, Footer, Header, Input, Label, ProgressBar, RichLog, Select, Switch
+from textual.widgets import DirectoryTree, Footer, Header, Input, Label, ProgressBar, RichLog, Select
 from textual.widgets.tree import TreeNode
 from textual.widgets._directory_tree import DirEntry
 
@@ -103,8 +103,13 @@ class PickScreen(Screen):
         with Horizontal(id="body"):
             with Vertical(id="settings"):
                 yield Label("Options", id="settings_title")
-                yield Label("Hardware (VideoToolbox, macOS)")
-                yield Switch(value=False, id="hw_switch")
+                yield Label("Encoder")
+                yield Select(
+                    hc.ENCODERS,
+                    value="software",
+                    allow_blank=False,
+                    id="encoder_select",
+                )
                 yield Label("Preset")
                 yield Select(
                     [(p, p) for p in hc.PRESETS],
@@ -122,8 +127,10 @@ class PickScreen(Screen):
             yield MarkableDirectoryTree(self.start_path, id="tree")
         yield Footer()
 
-    def on_switch_changed(self, event: Switch.Changed) -> None:
-        hardware = event.value
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id != "encoder_select":
+            return
+        hardware = event.value != "software"
         preset_select = self.query_one("#preset_select", Select)
         quality_label = self.query_one("#quality_label", Label)
         quality_input = self.query_one("#quality_input", Input)
@@ -147,7 +154,7 @@ class PickScreen(Screen):
             self.notify("No directories marked. Press space to mark one first.", severity="warning")
             return
 
-        hardware = self.query_one("#hw_switch", Switch).value
+        hardware = self.query_one("#encoder_select", Select).value != "software"
         preset = self.query_one("#preset_select", Select).value
         quality_text = self.query_one("#quality_input", Input).value.strip()
         if hardware:
@@ -412,7 +419,7 @@ class HevcEncodeApp(App):
     #settings { width: 28; height: 1fr; border: solid $accent; padding: 1; }
     #settings_title { text-style: bold; padding-bottom: 1; }
     #settings Label { padding-top: 1; }
-    #settings Select, #settings Input, #settings Switch { width: 100%; }
+    #settings Select, #settings Input { width: 100%; }
     #tree { width: 1fr; height: 1fr; }
     #overall_label, #file_label { padding: 1 1 0 1; }
     #overall_bar, #file_bar { padding: 0 1; }
