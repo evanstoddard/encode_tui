@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.claude/settings.local.json
+.DS_Store
+
+# stray tmp files left behind by an interrupted encode
+.*.tmp.mkv
